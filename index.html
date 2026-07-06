@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Die Wahrnehmungsschwelle — Perkolationssimulation</title>
+<style>
+  :root {
+    --page: #FBFAF6;
+    --card: #FFFFFF;
+    --ink: #26251F;
+    --ink-soft: #6B6960;
+    --ink-faint: #96938A;
+    --line: #E4E1D6;
+    --signal: #B0431F;
+    --signal-soft: #D85A30;
+    --ok: #8A877C;
+    --warn: #9A6A10;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #191A16;
+      --card: #22231E;
+      --ink: #ECEAE2;
+      --ink-soft: #A6A399;
+      --ink-faint: #7C796F;
+      --line: #35362F;
+      --signal: #F0997B;
+      --signal-soft: #F0997B;
+      --ok: #8A877C;
+      --warn: #D9A94E;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 20px 64px; }
+  .eyebrow {
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-faint); margin: 0 0 10px;
+  }
+  h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight: 400; font-size: 34px; line-height: 1.2; margin: 0 0 8px;
+  }
+  .sub { color: var(--ink-soft); margin: 0 0 28px; max-width: 60ch; }
+  .stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px; margin-bottom: 14px;
+  }
+  .stat {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .stat .label { font-size: 12px; letter-spacing: 0.04em; color: var(--ink-faint); }
+  .stat .value { font-size: 26px; font-weight: 500; line-height: 1.3; }
+  .stat .verdict { font-size: 13px; color: var(--ink-faint); }
+  #histCv { width: 100%; height: 40px; display: block; margin-top: 4px; }
+  #pasture {
+    width: 100%; height: 400px; display: block;
+    border-radius: 12px; border: 1px solid var(--line); cursor: crosshair;
+  }
+  .hint { font-size: 13px; color: var(--ink-faint); margin: 8px 0 20px; }
+  .controls {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px 32px; margin-bottom: 18px;
+  }
+  .ctrl label-row, .ctrl .row {
+    display: flex; justify-content: space-between;
+    font-size: 13.5px; color: var(--ink-soft); margin-bottom: 4px;
+  }
+  .ctrl .row b { font-weight: 500; color: var(--ink); }
+  input[type="range"] { width: 100%; accent-color: var(--signal); }
+  .buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 40px; }
+  button {
+    font: 500 14px/1 inherit; color: var(--ink);
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 16px; cursor: pointer;
+  }
+  button:hover { border-color: var(--ink-faint); }
+  button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+  button.on { background: var(--signal); border-color: var(--signal); color: var(--page); }
+  .model { border-top: 1px solid var(--line); padding-top: 28px; }
+  .model h2 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight: 400; font-size: 22px; margin: 0 0 12px;
+  }
+  .model p { max-width: 68ch; margin: 0 0 14px; }
+  .model dt { font-weight: 500; margin-top: 12px; }
+  .model dd { margin: 2px 0 0 0; color: var(--ink-soft); max-width: 66ch; }
+  footer { margin-top: 40px; font-size: 13px; color: var(--ink-faint); }
+  @media (max-width: 560px) { #pasture { height: 320px; } h1 { font-size: 28px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Gesellschaftssimulation Nr. 1 · Perkolationsmodell</p>
+  <h1>Die Wahrnehmungsschwelle</h1>
+  <p class="sub">Eine Nachricht verschwindet nicht, weil jemand sie verbietet — sondern weil ihr Signal
+  unter der kritischen Schwelle bleibt, ab der eine Herde sie wahrnimmt und weiterträgt.
+  Verschiebe die Regler und finde den Kipppunkt zwischen Verpuffen und Kaskade.</p>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="label">Informiert</div>
+      <div class="value" id="statNow">0 %</div>
+    </div>
+    <div class="stat">
+      <div class="label">Peak letzte Nachricht</div>
+      <div class="value" id="statPeak">–</div>
+      <div class="verdict" id="statVerdict">noch keine Nachricht</div>
+    </div>
+    <div class="stat">
+      <div class="label">Nachrichten</div>
+      <div class="value" id="statMsgs">0</div>
+    </div>
+    <div class="stat">
+      <div class="label">Verlauf</div>
+      <canvas id="histCv"></canvas>
+    </div>
+  </div>
+
+  <canvas id="pasture"></canvas>
+  <p class="hint">Klick auf die Weide platziert eine Nachricht an dieser Stelle.</p>
+
+  <div class="controls">
+    <div class="ctrl">
+      <div class="row"><label for="rS">Signalstärke der Nachricht</label><b id="vS">55</b></div>
+      <input type="range" id="rS" min="0" max="100" step="1" value="55">
+    </div>
+    <div class="ctrl">
+      <div class="row"><label for="rT">Wahrnehmungsschwelle (Mittel)</label><b id="vT">50</b></div>
+      <input type="range" id="rT" min="0" max="100" step="1" value="50">
+    </div>
+    <div class="ctrl">
+      <div class="row"><label for="rP">Weitergabe-Schwelle</label><b id="vP">30 %</b></div>
+      <input type="range" id="rP" min="0" max="100" step="1" value="30">
+    </div>
+    <div class="ctrl">
+      <div class="row"><label for="rD">Vergessensrate</label><b id="vD">15</b></div>
+      <input type="range" id="rD" min="0" max="100" step="1" value="15">
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button id="bSend">Nachricht senden</button>
+    <button id="bAuto" aria-pressed="false">Auto-Modus</button>
+    <button id="bReset">Zurücksetzen</button>
+  </div>
+
+  <div class="model">
+    <h2>Das Modell in vier Sätzen</h2>
+    <p>Jedes Schaf besitzt eine individuelle Wahrnehmungsschwelle (normalverteilt um den Regler-Mittelwert).
+    Eine Nachricht erscheint als Funke, dessen Signal mit der Entfernung und mit der Zeit zerfällt —
+    wahrgenommen wird sie nur, wenn das Signal die persönliche Schwelle übersteigt. Informierte Schafe
+    stecken ihre Nachbarn an, sobald deren Anteil informierter Nachbarn die Weitergabe-Schwelle erreicht
+    (Granovetter-Logik). Ohne soziale Auffrischung zerfällt die Informiertheit mit der Vergessensrate.</p>
+    <dl>
+      <dt>Signalstärke</dt>
+      <dd>Lautstärke und Reichweite der Nachricht. Der Hebel des „Zensors": Wenige Punkte Dämpfung
+      entscheiden über Kaskade oder Verpuffen.</dd>
+      <dt>Wahrnehmungsschwelle</dt>
+      <dd>Ab wann ein Individuum den Reiz überhaupt registriert — Abstumpfung und Reizüberflutung
+      wirken wie eine Anhebung dieses Werts.</dd>
+      <dt>Weitergabe-Schwelle</dt>
+      <dd>Der Anteil informierter Nachbarn, ab dem ein Schaf „mitzieht". Hohe soziale Kosten des
+      Weitersagens ersticken auch wahrgenommene Nachrichten.</dd>
+      <dt>Vergessensrate</dt>
+      <dd>Wie schnell Informiertheit ohne Verstärkung zerfällt. Der Nachrichtenzyklus als
+      Löschmechanismus: Selbst erfolgreiche Kaskaden kollabieren, wenn Erinnerung schneller
+      verblasst, als die Nachbarschaft sie auffrischt.</dd>
+    </dl>
+  </div>
+
+  <footer>Selbständige Referenzimplementierung (M2–M3 der Spezifikation) · Kein Netzwerkzugriff
+  erforderlich · Kernkalibrierung: N ≈ 110, σ = 12, Ø 6 Nachbarn, p = 0.35</footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Farben (hell/dunkel) ----------
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function palette(dark) {
+    return dark
+      ? { bg:"#27500A", grass:"#3B6D11", wool:"#F4EFE4", edge:"rgba(0,0,0,0.35)",
+          head:"#2C2C2A", info:"#F0997B", spark:"#F0997B", mark:"#F5C4B3",
+          grid:"rgba(255,255,255,0.18)" }
+      : { bg:"#EAF3DE", grass:"#C0DD97", wool:"#F7F3E9", edge:"#CBC6B6",
+          head:"#444441", info:"#D85A30", spark:"#D85A30", mark:"#712B13",
+          grid:"rgba(0,0,0,0.12)" };
+  }
+  var C = palette(mq.matches);
+  var wc, ic;
+  function hexRgb(h) { return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]; }
+  function setLerp() { wc = hexRgb(C.wool); ic = hexRgb(C.info); }
+  setLerp();
+  function woolCol(a) {
+    var r = Math.round(wc[0] + (ic[0]-wc[0])*a),
+        g = Math.round(wc[1] + (ic[1]-wc[1])*a),
+        b = Math.round(wc[2] + (ic[2]-wc[2])*a);
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
+  if (mq.addEventListener) mq.addEventListener("change", function (e) { C = palette(e.matches); setLerp(); });
+
+  // ---------- Zustand ----------
+  var cv = document.getElementById("pasture"), ctx = cv.getContext("2d");
+  var hc = document.getElementById("histCv"), hctx = hc.getContext("2d");
+  var W = 0, H = 400, DPR = 1;
+  var herd = [], sparks = [], tufts = [], hist = [];
+  var R = 70, RS = 125;                 // Nachbarschaftsradius, Funken-Wirkradius
+  var msgs = 0, peak = 0, frac = 0, autoT = null;
+  var P = { S: 55, TH: 50, PHI: 30, DEC: 15 };
+  var tNow = 0, socAcc = 0, histAcc = 0, uiAcc = 0;
+
+  function gauss() {
+    var u = 0, v = 0;
+    while (!u) u = Math.random();
+    while (!v) v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  function resize() {
+    var r = cv.getBoundingClientRect();
+    DPR = window.devicePixelRatio || 1;
+    W = r.width; H = r.height;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    var q = hc.getBoundingClientRect();
+    hc.width = Math.round(q.width * DPR); hc.height = Math.round(q.height * DPR);
+    hctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  function makeHerd() {
+    herd = []; tufts = [];
+    var N = 110, pad = 28, tries = 0;
+    while (herd.length < N && tries < 12000) {
+      tries++;
+      var x = pad + Math.random() * (W - 2*pad),
+          y = pad + 16 + Math.random() * (H - 2*pad - 16),
+          ok = true;
+      for (var i = 0; i < herd.length; i++) {
+        var dx = herd[i].x - x, dy = herd[i].y - y;
+        if (dx*dx + dy*dy < 26*26) { ok = false; break; }
+      }
+      if (ok) herd.push({ x:x, y:y, z:gauss(), a:0, dir: Math.random()<0.5?-1:1,
+                          size: 8.5 + Math.random()*3, phase: Math.random()*7, bang:-9, nb:[] });
+    }
+    herd.sort(function (a,b) { return a.y - b.y; });
+    R = Math.sqrt(6 * W * H / (Math.PI * herd.length));   // Ø ~6 Nachbarn
+    for (var i = 0; i < herd.length; i++) {
+      herd[i].nb = [];
+      for (var j = 0; j < herd.length; j++) {
+        if (i === j) continue;
+        var dx = herd[i].x - herd[j].x, dy = herd[i].y - herd[j].y;
+        if (dx*dx + dy*dy < R*R) herd[i].nb.push(j);
+      }
+    }
+    for (var k = 0; k < 48; k++)
+      tufts.push({ x: Math.random()*W, y: 14 + Math.random()*(H-20), r: 2.5 + Math.random()*2.5 });
+  }
+
+  function theta(s) {
+    var t = P.TH + 12 * s.z;
+    return t < 5 ? 5 : (t > 95 ? 95 : t);
+  }
+
+  function emit(x, y) {
+    sparks.push({ x:x, y:y, S: P.S });
+    msgs++; peak = frac;
+    refreshStats();
+  }
+
+  // ---------- Dynamik ----------
+  function update(dt) {
+    // Funkenzerfall
+    var lam = 0.35 + P.DEC/100 * 1.4;
+    for (var i = 0; i < sparks.length; i++) sparks[i].S -= sparks[i].S * lam * dt;
+    sparks = sparks.filter(function (s) { return s.S > 4; });
+
+    // Direkte Wahrnehmung + Vergessen
+    var forget = (P.DEC/100) * 0.35 * dt;
+    for (var i = 0; i < herd.length; i++) {
+      var s = herd[i];
+      for (var k = 0; k < sparks.length; k++) {
+        var q = sparks[k], dx = s.x - q.x, dy = s.y - q.y,
+            d = Math.sqrt(dx*dx + dy*dy);
+        if (d < RS) {
+          var eff = q.S * (1 - d/RS);
+          if (eff > theta(s)) { if (s.a < 0.5) s.bang = tNow; s.a = 1; }
+        }
+      }
+      s.a = Math.max(0, s.a - forget);
+    }
+
+    // Soziale Weitergabe (Granovetter), Snapshot verhindert Ketten im selben Tick
+    socAcc += dt;
+    if (socAcc >= 0.3) {
+      socAcc = 0;
+      var aw = herd.map(function (s) { return s.a >= 0.5; });
+      for (var i = 0; i < herd.length; i++) {
+        var s = herd[i];
+        if (!s.nb.length) continue;
+        var c = 0;
+        for (var j = 0; j < s.nb.length; j++) if (aw[s.nb[j]]) c++;
+        var f = c / s.nb.length;
+        if (f >= P.PHI/100) {
+          if (s.a < 0.5) { if (Math.random() < 0.35) { s.a = 1; s.bang = tNow; } }
+          else s.a = Math.min(1, s.a + 0.4);
+        }
+      }
+    }
+
+    var n = 0;
+    for (var i = 0; i < herd.length; i++) if (herd[i].a >= 0.5) n++;
+    frac = herd.length ? n / herd.length : 0;
+    if (frac > peak) peak = frac;
+
+    histAcc += dt;
+    if (histAcc >= 0.25) { histAcc = 0; hist.push(frac); if (hist.length > 240) hist.shift(); drawHist(); }
+    uiAcc += dt;
+    if (uiAcc >= 0.2) { uiAcc = 0; refreshStats(); }
+  }
+
+  // ---------- Statistik ----------
+  function refreshStats() {
+    document.getElementById("statNow").textContent = Math.round(frac * 100) + " %";
+    document.getElementById("statMsgs").textContent = msgs;
+    var pk = document.getElementById("statPeak"), vd = document.getElementById("statVerdict");
+    var css = getComputedStyle(document.documentElement);
+    if (!msgs) { pk.textContent = "–"; vd.textContent = "noch keine Nachricht"; vd.style.color = ""; return; }
+    pk.textContent = Math.round(peak * 100) + " %";
+    if (peak < 0.1)      { vd.textContent = "verpufft";            vd.style.color = css.getPropertyValue("--ok"); }
+    else if (peak < 0.5) { vd.textContent = "lokale Ausbreitung";  vd.style.color = css.getPropertyValue("--warn"); }
+    else                 { vd.textContent = "Kaskade";             vd.style.color = css.getPropertyValue("--signal"); }
+  }
+
+  function drawHist() {
+    var w = hc.width / DPR, h = hc.height / DPR;
+    hctx.clearRect(0, 0, w, h);
+    hctx.strokeStyle = C.grid; hctx.lineWidth = 1;
+    hctx.beginPath(); hctx.moveTo(0, h-1); hctx.lineTo(w, h-1); hctx.stroke();
+    if (hist.length < 2) return;
+    hctx.strokeStyle = C.spark; hctx.lineWidth = 1.6;
+    hctx.beginPath();
+    for (var i = 0; i < hist.length; i++) {
+      var x = i / 239 * w, y = h - 2 - hist[i] * (h - 5);
+      if (i === 0) hctx.moveTo(x, y); else hctx.lineTo(x, y);
+    }
+    hctx.stroke();
+  }
+
+  // ---------- Zeichnen ----------
+  function cloud(x, y, r, col) {
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r*1.45, r*0.95, 0, 0, 6.3);
+    for (var k = 0; k < 7; k++) {
+      var an = k/7 * 6.283,
+          bx = x + Math.cos(an) * r * 1.12,
+          by = y + Math.sin(an) * r * 0.6;
+      ctx.moveTo(bx + r*0.52, by);
+      ctx.arc(bx, by, r*0.52, 0, 6.3);
+    }
+    ctx.fill();
+  }
+
+  function drawSheep(s) {
+    var r = s.size,
+        bob = reduceMotion ? 0 : Math.sin(tNow*2.1 + s.phase) * 1.1;
+    // Beine
+    ctx.strokeStyle = C.head; ctx.lineWidth = 2; ctx.lineCap = "round";
+    var lg = [-0.55, -0.18, 0.18, 0.55];
+    ctx.beginPath();
+    for (var k = 0; k < 4; k++) {
+      var lx = s.x + lg[k]*r*1.6;
+      ctx.moveTo(lx, s.y + r*0.5); ctx.lineTo(lx, s.y + r*1.15);
+    }
+    ctx.stroke();
+    // Wollkörper: Silhouette + Füllung
+    cloud(s.x, s.y, r*1.07, C.edge);
+    cloud(s.x, s.y, r, woolCol(Math.min(1, s.a)));
+    // Kopf, Ohr, Auge
+    var hx = s.x + s.dir*r*1.5, hy = s.y - r*0.45 + bob;
+    ctx.fillStyle = C.head;
+    ctx.beginPath(); ctx.ellipse(hx - s.dir*r*0.5, hy - r*0.05, r*0.34, r*0.17, 0, 0, 6.3); ctx.fill();
+    ctx.beginPath(); ctx.arc(hx, hy, r*0.52, 0, 6.3); ctx.fill();
+    ctx.fillStyle = C.wool;
+    ctx.beginPath(); ctx.arc(hx + s.dir*r*0.17, hy - r*0.12, 1.4, 0, 6.3); ctx.fill();
+    // "!"-Moment der ersten Wahrnehmung
+    if (tNow - s.bang < 1.2) {
+      ctx.fillStyle = C.mark;
+      ctx.font = "500 14px -apple-system, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("!", s.x, s.y - r*1.9);
+    }
+  }
+
+  function draw() {
+    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+    // Grasbüschel
+    ctx.strokeStyle = C.grass; ctx.lineWidth = 1.4; ctx.lineCap = "round";
+    for (var i = 0; i < tufts.length; i++) {
+      var t = tufts[i];
+      ctx.beginPath();
+      ctx.moveTo(t.x, t.y); ctx.lineTo(t.x - t.r*0.7, t.y - t.r);
+      ctx.moveTo(t.x, t.y); ctx.lineTo(t.x, t.y - t.r*1.3);
+      ctx.moveTo(t.x, t.y); ctx.lineTo(t.x + t.r*0.7, t.y - t.r);
+      ctx.stroke();
+    }
+    // Funken: Wirkradius + Kern
+    for (var i = 0; i < sparks.length; i++) {
+      var q = sparks[i], al = Math.max(0, Math.min(1, q.S/100));
+      ctx.globalAlpha = 0.12*al + 0.04;
+      ctx.strokeStyle = C.spark; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(q.x, q.y, RS, 0, 6.3); ctx.stroke();
+      ctx.globalAlpha = 0.25*al + 0.1;
+      ctx.fillStyle = C.spark;
+      ctx.beginPath(); ctx.arc(q.x, q.y, 5 + q.S*0.22, 0, 6.3); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.arc(q.x, q.y, 3.5, 0, 6.3); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    for (var i = 0; i < herd.length; i++) drawSheep(herd[i]);
+  }
+
+  // ---------- Loop ----------
+  var last = null;
+  function loop(ts) {
+    if (last === null) last = ts;
+    var dt = Math.min(0.05, (ts - last) / 1000);
+    last = ts; tNow += dt;
+    update(dt); draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- UI ----------
+  function bind(rid, key, vid, fmt) {
+    var el = document.getElementById(rid), out = document.getElementById(vid);
+    el.addEventListener("input", function () {
+      P[key] = Number(el.value);
+      out.textContent = fmt ? fmt(el.value) : el.value;
+    });
+  }
+  bind("rS", "S", "vS");
+  bind("rT", "TH", "vT");
+  bind("rP", "PHI", "vP", function (v) { return v + " %"; });
+  bind("rD", "DEC", "vD");
+
+  document.getElementById("bSend").addEventListener("click", function () {
+    var pad = 60;
+    emit(pad + Math.random()*(W - 2*pad), pad + Math.random()*(H - 2*pad));
+  });
+
+  var autoBtn = document.getElementById("bAuto");
+  autoBtn.addEventListener("click", function () {
+    if (autoT) {
+      clearInterval(autoT); autoT = null;
+      autoBtn.classList.remove("on"); autoBtn.setAttribute("aria-pressed", "false");
+    } else {
+      autoT = setInterval(function () {
+        if (document.hidden) return;
+        var pad = 60;
+        emit(pad + Math.random()*(W - 2*pad), pad + Math.random()*(H - 2*pad));
+      }, 4000);
+      autoBtn.classList.add("on"); autoBtn.setAttribute("aria-pressed", "true");
+    }
+  });
+
+  document.getElementById("bReset").addEventListener("click", function () {
+    sparks = []; msgs = 0; peak = 0; hist = [];
+    makeHerd(); refreshStats(); drawHist();
+  });
+
+  cv.addEventListener("click", function (e) {
+    var r = cv.getBoundingClientRect();
+    emit(e.clientX - r.left, e.clientY - r.top);
+  });
+
+  var lastW = 0;
+  window.addEventListener("resize", function () {
+    var r = cv.getBoundingClientRect();
+    if (Math.abs(r.width - lastW) > 40) { lastW = r.width; resize(); makeHerd(); }
+    else resize();
+  });
+
+  // ---------- Start ----------
+  resize(); lastW = W;
+  makeHerd(); refreshStats();
+  setTimeout(function () { emit(W * 0.5, H * 0.5); }, 700);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
